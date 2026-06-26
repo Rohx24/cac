@@ -77,6 +77,8 @@ export default function CalculatorPage() {
   const [overhead, setOverhead] = useState(10);
   const [currency, setCurrency] = useState<Currency>("INR");
 
+  const [priceOverrides, setPriceOverrides] = useState<Record<string, number>>({});
+
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [loadingPrices,   setLoadingPrices]   = useState(false);
   const [saving,          setSaving]          = useState(false);
@@ -162,6 +164,10 @@ export default function CalculatorPage() {
 
   const addEntry = () => setEntries((prev) => [...prev, newEntry()]);
 
+  const handlePriceOverride = useCallback((metalName: string, price: number) => {
+    setPriceOverrides((prev) => ({ ...prev, [metalName]: price }));
+  }, []);
+
   // ─── Live calculation ───────────────────────────────────────────────────────
 
   const breakdown = useMemo(() => {
@@ -169,7 +175,7 @@ export default function CalculatorPage() {
       const metal = metals.find((m) => m.name === e.metal_name);
       const priceData = prices.find((p) => p.name === e.metal_name);
       const density = metal?.density ?? 7.85;
-      const pricePerKg = priceData?.price ?? 0;
+      const pricePerKg = priceOverrides[e.metal_name] ?? priceData?.price ?? 0;
 
       const l = toCm(parseFloat(e.length) || 0, e.unit);
       const b = toCm(parseFloat(e.breadth) || 0, e.unit);
@@ -192,7 +198,7 @@ export default function CalculatorPage() {
         unit: e.unit,
       };
     }).filter((b) => b.weight_kg > 0);
-  }, [entries, metals, prices, currency]);
+  }, [entries, metals, prices, currency, priceOverrides]);
 
   const totalMaterial = useMemo(
     () => breakdown.reduce((s, b) => s + b.total_cost, 0),
@@ -256,9 +262,9 @@ export default function CalculatorPage() {
   return (
     <div>
       {/* Page header */}
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-slate-900">Cost Calculator</h1>
-        <p className="text-sm text-slate-500 mt-0.5">
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-lg sm:text-xl font-semibold text-slate-900">Cost Calculator</h1>
+        <p className="text-sm text-slate-500 mt-0.5 hidden sm:block">
           Enter metal dimensions to calculate material costs with overhead.
         </p>
       </div>
@@ -271,7 +277,7 @@ export default function CalculatorPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-6">
         {/* ── Left: Metal entries ── */}
         <div className="lg:col-span-2 space-y-3">
           <div className="flex items-center justify-between">
@@ -306,6 +312,8 @@ export default function CalculatorPage() {
               entry={entry}
               metals={metals}
               prices={prices}
+              priceOverride={priceOverrides[entry.metal_name]}
+              onPriceOverride={handlePriceOverride}
               onChange={updateEntry}
               onRemove={removeEntry}
               onAddCustom={() => setShowCustomModal(true)}
@@ -348,23 +356,28 @@ export default function CalculatorPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wider">
-                      <th className="px-4 py-2 text-left font-medium">Metal</th>
-                      <th className="px-4 py-2 text-right font-medium">Weight (kg)</th>
-                      <th className="px-4 py-2 text-right font-medium">Price/kg</th>
-                      <th className="px-4 py-2 text-right font-medium">Total</th>
+                      <th className="px-3 sm:px-4 py-2 text-left font-medium">Metal</th>
+                      <th className="px-3 sm:px-4 py-2 text-right font-medium hidden sm:table-cell">Weight (kg)</th>
+                      <th className="px-3 sm:px-4 py-2 text-right font-medium hidden sm:table-cell">Price/kg</th>
+                      <th className="px-3 sm:px-4 py-2 text-right font-medium">Total</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {breakdown.map((b) => (
                       <tr key={b.id} className="hover:bg-slate-50">
-                        <td className="px-4 py-2.5 font-medium text-slate-800">{b.display_name}</td>
-                        <td className="px-4 py-2.5 text-right text-slate-600 font-mono text-xs">
+                        <td className="px-3 sm:px-4 py-2.5 font-medium text-slate-800">
+                          <div>{b.display_name}</div>
+                          <div className="sm:hidden text-xs text-slate-400 font-normal">
+                            {b.weight_kg.toFixed(3)} kg · {fmtCurrency(b.price_per_kg, currency)}/kg
+                          </div>
+                        </td>
+                        <td className="px-3 sm:px-4 py-2.5 text-right text-slate-600 font-mono text-xs hidden sm:table-cell">
                           {b.weight_kg.toFixed(4)}
                         </td>
-                        <td className="px-4 py-2.5 text-right text-slate-600">
+                        <td className="px-3 sm:px-4 py-2.5 text-right text-slate-600 hidden sm:table-cell">
                           {fmtCurrency(b.price_per_kg, currency)}
                         </td>
-                        <td className="px-4 py-2.5 text-right font-semibold text-slate-800">
+                        <td className="px-3 sm:px-4 py-2.5 text-right font-semibold text-slate-800">
                           {fmtCurrency(b.total_cost, currency)}
                         </td>
                       </tr>
@@ -372,10 +385,10 @@ export default function CalculatorPage() {
                   </tbody>
                   <tfoot>
                     <tr className="bg-slate-50 border-t border-slate-200">
-                      <td colSpan={3} className="px-4 py-2.5 text-sm font-semibold text-slate-700">
+                      <td colSpan={3} className="px-3 sm:px-4 py-2.5 text-sm font-semibold text-slate-700">
                         Material Total
                       </td>
-                      <td className="px-4 py-2.5 text-right font-bold text-slate-900">
+                      <td className="px-3 sm:px-4 py-2.5 text-right font-bold text-slate-900">
                         {fmtCurrency(totalMaterial, currency)}
                       </td>
                     </tr>
@@ -434,7 +447,7 @@ export default function CalculatorPage() {
           </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
             <button
               className="btn-secondary flex-1"
               onClick={handleCopy}

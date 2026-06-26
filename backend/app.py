@@ -42,7 +42,7 @@ DEFAULT_METALS = [
         "name": "aluminium",
         "display_name": "Aluminium",
         "density": 2.70,
-        "yfinance_symbol": "ALU=F",
+        "yfinance_symbol": "ALI=F",   # COMEX aluminium futures
         "price_unit": "USD/tonne",
         "default_price_inr": 220.0,
         "is_live": True,
@@ -83,16 +83,15 @@ DEFAULT_METALS = [
         "name": "nickel",
         "display_name": "Nickel",
         "density": 8.91,
-        "yfinance_symbol": "NI=F",
-        "price_unit": "USD/tonne",
+        "yfinance_symbol": None,      # NI=F has no data on yfinance; set manually
         "default_price_inr": 1200.0,
-        "is_live": True,
+        "is_live": False,
     },
     {
         "name": "zinc",
         "display_name": "Zinc",
         "density": 7.14,
-        "yfinance_symbol": "ZB=F",
+        "yfinance_symbol": "ZNC=F",   # Zinc futures (ZB=F was Treasury bonds)
         "price_unit": "USD/tonne",
         "default_price_inr": 250.0,
         "is_live": True,
@@ -123,6 +122,22 @@ def raw_price_to_inr(price_raw: float, price_unit: str, usd_inr: float) -> float
     return price_raw * usd_inr
 
 
+def _yf_last_price(symbol: str) -> float:
+    """Fetch latest close price using yf.download (works with yfinance >=0.2.50)."""
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        df = yf.download(symbol, period="5d", progress=False, auto_adjust=True)
+    if df.empty:
+        raise ValueError(f"no data for {symbol}")
+    close = df["Close"].dropna()
+    if close.empty:
+        raise ValueError(f"no close data for {symbol}")
+    val = close.iloc[-1]
+    # newer yfinance returns a Series (MultiIndex) even for a single ticker
+    return float(val.iloc[0]) if hasattr(val, "iloc") else float(val)
+
+
 def fetch_and_update_prices():
     """APScheduler job: refresh live metal prices every 60 minutes."""
     logger.info("Price update job started")
@@ -134,11 +149,7 @@ def fetch_and_update_prices():
         if not symbol:
             continue
         try:
-            ticker = yf.Ticker(symbol)
-            hist = ticker.history(period="1d")
-            if hist.empty:
-                raise ValueError("empty history")
-            price_raw = float(hist["Close"].iloc[-1])
+            price_raw = _yf_last_price(symbol)
             price_inr = raw_price_to_inr(price_raw, metal.get("price_unit", ""), usd_inr)
 
             supabase.table("metal_prices").upsert(
@@ -151,7 +162,7 @@ def fetch_and_update_prices():
                 },
                 on_conflict="metal_name",
             ).execute()
-            logger.info("Updated %s: ₹%.2f/kg", metal["name"], price_inr)
+            logger.info("Updated %s (%s): raw=%.4f → ₹%.2f/kg", metal["name"], symbol, price_raw, price_inr)
         except Exception as exc:
             logger.error("Price update failed for %s (%s): %s", metal["name"], symbol, exc)
 

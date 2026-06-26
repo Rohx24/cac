@@ -1,12 +1,14 @@
 "use client";
 
-import { X, Wifi, WifiOff } from "lucide-react";
+import { X, Wifi, WifiOff, Pencil } from "lucide-react";
 import type { Metal, MetalPrice, MetalEntry, Unit } from "@/types";
 
 interface Props {
   entry: MetalEntry;
   metals: Metal[];
   prices: MetalPrice[];
+  priceOverride?: number;
+  onPriceOverride: (metalName: string, price: number) => void;
   onChange: (id: string, field: keyof MetalEntry, value: string) => void;
   onRemove: (id: string) => void;
   onAddCustom: () => void;
@@ -27,10 +29,25 @@ function formatCurrency(amount: number, currency: string): string {
   return `${sym}${amount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 }
 
-export default function MetalRow({ entry, metals, prices, onChange, onRemove, onAddCustom, currency }: Props) {
+function timeAgo(iso: string): string {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+export default function MetalRow({
+  entry, metals, prices, priceOverride, onPriceOverride,
+  onChange, onRemove, onAddCustom, currency,
+}: Props) {
   const selectedMetal = metals.find((m) => m.name === entry.metal_name);
   const priceData = prices.find((p) => p.name === entry.metal_name);
-  const pricePerKg = priceData?.price ?? 0;
+  const isLive = priceData?.is_live ?? false;
+
+  // Effective price: user override > fetched price > 0
+  const effectivePrice = priceOverride ?? priceData?.price ?? 0;
 
   const l = parseFloat(entry.length) || 0;
   const b = parseFloat(entry.breadth) || 0;
@@ -41,9 +58,10 @@ export default function MetalRow({ entry, metals, prices, onChange, onRemove, on
   const bcm = toCm(b, entry.unit);
   const hcm = toCm(h, entry.unit);
   const weightKg = (lcm * bcm * hcm * density) / 1000;
-  const totalCost = weightKg * pricePerKg;
+  const totalCost = weightKg * effectivePrice;
 
   const hasValues = l > 0 && b > 0 && h > 0;
+  const sym = { INR: "₹", USD: "$", EUR: "€" }[currency] ?? currency;
 
   return (
     <div className="card p-4 relative group">
@@ -109,8 +127,6 @@ export default function MetalRow({ entry, metals, prices, onChange, onRemove, on
             />
           </div>
         ))}
-
-        {/* Unit toggle */}
         <div>
           <label className="label">Unit</label>
           <select
@@ -125,46 +141,73 @@ export default function MetalRow({ entry, metals, prices, onChange, onRemove, on
         </div>
       </div>
 
-      {/* Live price + computed values */}
-      <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
-        <div className="flex items-center gap-2">
-          {priceData?.is_live ? (
-            <span className="badge-live">
-              <Wifi size={10} />
-              Live
-            </span>
-          ) : (
-            <span className="badge-manual">
-              <WifiOff size={10} />
-              Manual
-            </span>
-          )}
-          <span className="text-slate-500">
-            {formatCurrency(pricePerKg, currency)}/kg
-          </span>
-          {priceData?.updated_at && (
-            <span className="text-slate-400">
-              · updated {timeAgo(priceData.updated_at)}
-            </span>
-          )}
-        </div>
-
-        {hasValues && (
-          <div className="flex items-center gap-3 font-medium">
-            <span className="text-slate-500">{weightKg.toFixed(3)} kg</span>
-            <span className="text-brand-600">{formatCurrency(totalCost, currency)}</span>
+      {/* Price row */}
+      <div className="pt-2 border-t border-slate-100">
+        {isLive ? (
+          /* Live price — read-only display */
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2">
+              <span className="badge-live">
+                <Wifi size={10} />
+                Live
+              </span>
+              <span className="text-slate-500 font-medium">
+                {formatCurrency(effectivePrice, currency)}/kg
+              </span>
+              {priceData?.updated_at && (
+                <span className="text-slate-400">· {timeAgo(priceData.updated_at)}</span>
+              )}
+            </div>
+            {hasValues && (
+              <div className="flex items-center gap-3 font-medium">
+                <span className="text-slate-500">{weightKg.toFixed(3)} kg</span>
+                <span className="text-brand-600">{formatCurrency(totalCost, currency)}</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Manual price — editable input */
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="badge-manual">
+                <WifiOff size={10} />
+                Manual
+              </span>
+              <span className="text-xs text-slate-400 flex items-center gap-1">
+                <Pencil size={9} />
+                Set your price
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <span className="absolute inset-y-0 left-3 flex items-center text-slate-500 text-sm font-medium pointer-events-none">
+                  {sym}
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="input pl-7 font-mono text-sm"
+                  placeholder={String(priceData?.price ?? 0)}
+                  value={priceOverride ?? priceData?.price ?? ""}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val) && val >= 0) {
+                      onPriceOverride(entry.metal_name, val);
+                    }
+                  }}
+                />
+              </div>
+              <span className="text-xs text-slate-400 whitespace-nowrap">/kg</span>
+              {hasValues && (
+                <span className="text-sm font-bold text-brand-600 whitespace-nowrap">
+                  = {formatCurrency(totalCost, currency)}
+                </span>
+              )}
+            </div>
           </div>
         )}
       </div>
     </div>
   );
-}
-
-function timeAgo(iso: string): string {
-  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
 }

@@ -59,13 +59,13 @@ CREATE POLICY "service write settings"      ON settings      FOR ALL USING (auth
 -- Seed default prices (INR/kg)
 INSERT INTO metal_prices (metal_name, price, currency, yfinance_symbol) VALUES
   ('copper',          800.00, 'INR', 'HG=F'),
-  ('aluminium',       220.00, 'INR', 'ALU=F'),
+  ('aluminium',       220.00, 'INR', 'ALI=F'),
   ('steel',            55.00, 'INR', NULL),
   ('stainless_steel',  85.00, 'INR', NULL),
   ('cast_iron',        40.00, 'INR', NULL),
   ('brass',           350.00, 'INR', NULL),
   ('nickel',         1200.00, 'INR', 'NI=F'),
-  ('zinc',            250.00, 'INR', 'ZB=F')
+  ('zinc',            250.00, 'INR', 'ZNC=F')
 ON CONFLICT (metal_name) DO UPDATE SET
   price          = EXCLUDED.price,
   currency       = EXCLUDED.currency,
