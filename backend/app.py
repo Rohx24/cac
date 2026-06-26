@@ -390,11 +390,16 @@ def calculate():
             "currency": currency,
         }
 
-        # Persist to Supabase
+        # Persist to Supabase (column is metal_breakdown, not breakdown)
         try:
             supabase.table("calculations").insert(
                 {
-                    **result,
+                    "metal_breakdown": breakdown,
+                    "total_material_cost": result["total_material_cost"],
+                    "overhead_percent": result["overhead_percent"],
+                    "overhead_amount": result["overhead_amount"],
+                    "final_cost": result["final_cost"],
+                    "currency": result["currency"],
                     "calculated_at": datetime.now(timezone.utc).isoformat(),
                 }
             ).execute()
